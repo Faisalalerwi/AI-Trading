@@ -3,7 +3,7 @@
 // مستفيد من فكرة: BOS ثم آخر شمعة معاكسة قبل الكسر
 
 export function analyzeOrderBlocks(candles = []) {
-    if (!Array.isArray(candles) || candles.length < 30) {
+    if (!Array.isArray(candles) || candles.length < 20) {
         return {
             hasBullishOB: false,
             hasBearishOB: false,
@@ -13,7 +13,7 @@ export function analyzeOrderBlocks(candles = []) {
         };
     }
 
-    const lookback = Math.min(60, candles.length);
+    const lookback = Math.min(100, candles.length);
     const recent = candles.slice(-lookback);
 
     const avgRange = average(
