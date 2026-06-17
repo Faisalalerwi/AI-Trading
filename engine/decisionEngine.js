@@ -30,9 +30,9 @@ export async function makeDecision(data) {
 
     finalScore = Math.max(0, Math.min(100, finalScore));
 
-    let decision = "WAIT";
+   let decision = "WAIT";
 
-  if (
+if (
     finalScore >= 85 &&
     data.buyTrigger === true &&
     smartMoney.score >= 50
@@ -40,9 +40,9 @@ export async function makeDecision(data) {
     decision = "BUY";
 }
 
-    if (data.inTrade === true && data.sellTrigger === true) {
-        decision = "EXIT";
-    }
+if (data.sellTrigger === true) {
+    decision = "EXIT";
+}
 
     return {
         decision,
