@@ -14,7 +14,16 @@ app.get("/", (req, res) => {
 app.post("/webhook-tv", async (req, res) => {
     try {
         const data = req.body;
-
+if (Array.isArray(data.candles)) {
+    data.candles = data.candles.map(c => ({
+        open: Number(c.o ?? c.open ?? c.c ?? c.close),
+        high: Number(c.h ?? c.high),
+        low: Number(c.l ?? c.low),
+        close: Number(c.c ?? c.close),
+        volume: Number(c.v ?? c.volume ?? 0),
+        time: c.t ?? c.time ?? null
+    }));
+}
         log("وصل Webhook من TradingView", data);
 
         const decision = await makeDecision(data);
