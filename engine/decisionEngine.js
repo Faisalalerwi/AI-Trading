@@ -5,10 +5,12 @@ export async function makeDecision(data) {
 
     const base = smartScore(data);
 
-    // إذا ما وصلتنا شموع، نعتمد على القرار القديم فقط
-    if (!Array.isArray(data.candles) || data.candles.length < 30) {
+    const candlesCount = Array.isArray(data.candles) ? data.candles.length : 0;
+
+    if (!Array.isArray(data.candles) || candlesCount < 20) {
         return {
             ...base,
+            candlesCount,
             smartMoneyScore: 0,
             smartMoneySummary: "لا توجد شموع كافية لتحليل Smart Money"
         };
@@ -48,7 +50,9 @@ export async function makeDecision(data) {
         score: finalScore,
         baseScore: base.score,
         smartMoneyScore: smartMoney.score,
+        smartMoneyBias: smartMoney.bias,
         confidence: finalScore,
+        candlesCount,
         reason: base.reason + " | Smart Money: " + smartMoney.summary,
         smartMoney
     };
