@@ -1,168 +1,252 @@
-// Order Block Engine v0.4
-// يستخرج مناطق الأوردر بلوك من الشموع بدون رسم
-// مستفيد من فكرة: BOS ثم آخر شمعة معاكسة قبل الكسر
+// Order Block Engine v1.0
+// ICT / Smart Money style
+// يكتشف أفضل Bullish/Bearish Order Block مع القوة واللمسات والكسر
 
 export function analyzeOrderBlocks(candles = []) {
     if (!Array.isArray(candles) || candles.length < 20) {
-        return {
-            hasBullishOB: false,
-            hasBearishOB: false,
-            bullish: null,
-            bearish: null,
-            reason: "لا توجد شموع كافية لاستخراج الأوردر بلوك"
-        };
+        return emptyResult("لا توجد شموع كافية لاستخراج الأوردر بلوك");
     }
 
-    const lookback = Math.min(100, candles.length);
-    const recent = candles.slice(-lookback);
+    const clean = candles
+        .map(normalizeCandle)
+        .filter(c =>
+            Number.isFinite(c.open) &&
+            Number.isFinite(c.high) &&
+            Number.isFinite(c.low) &&
+            Number.isFinite(c.close)
+        );
 
-    const avgRange = average(
-        recent.map(c => Number(c.high) - Number(c.low))
-    );
+    if (clean.length < 20) {
+        return emptyResult("الشموع غير صالحة للتحليل");
+    }
 
-    const avgVolume = average(
-        recent.map(c => Number(c.volume || 0))
-    );
+    const avgRange = average(clean.map(c => c.high - c.low));
+    const avgVolume = average(clean.map(c => c.volume || 0));
 
-    const bullish = findBullishOrderBlock(recent, avgRange, avgVolume);
-    const bearish = findBearishOrderBlock(recent, avgRange, avgVolume);
+    const bullishBlocks = findBullishBlocks(clean, avgRange, avgVolume);
+    const bearishBlocks = findBearishBlocks(clean, avgRange, avgVolume);
+
+    const bullish = bullishBlocks.length
+        ? bullishBlocks.sort((a, b) => b.confidence - a.confidence)[0]
+        : null;
+
+    const bearish = bearishBlocks.length
+        ? bearishBlocks.sort((a, b) => b.confidence - a.confidence)[0]
+        : null;
+
+    let best = null;
+
+    if (bullish && bearish) {
+        best = bullish.confidence >= bearish.confidence ? "bullish" : "bearish";
+    } else if (bullish) {
+        best = "bullish";
+    } else if (bearish) {
+        best = "bearish";
+    }
 
     return {
         hasBullishOB: bullish !== null,
         hasBearishOB: bearish !== null,
         bullish,
         bearish,
-        reason: buildReason(bullish, bearish)
+        best,
+        reason: best
+            ? `أفضل أوردر بلوك: ${best} بقوة ${best === "bullish" ? bullish.confidence : bearish.confidence}`
+            : "لا يوجد أوردر بلوك صالح حاليًا"
     };
 }
 
-function findBullishOrderBlock(candles, avgRange, avgVolume) {
-    for (let i = candles.length - 2; i >= 10; i--) {
-        const current = candles[i];
-        const previousHigh = highest(candles.slice(Math.max(0, i - 10), i).map(c => Number(c.high)));
+function findBullishBlocks(candles, avgRange, avgVolume) {
+    const blocks = [];
 
-        const bosUp =
-            Number(current.close) > previousHigh &&
-            Number(current.volume || 0) >= avgVolume;
+    for (let i = 8; i < candles.length; i++) {
+        const prior = candles.slice(Math.max(0, i - 8), i);
+        const priorHigh = highest(prior.map(c => c.high));
 
-        if (!bosUp) continue;
+        const bos =
+            candles[i].close > priorHigh &&
+            candleBody(candles[i]) >= avgRange * 0.35;
 
-        for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
-            const c = candles[j];
+        if (!bos) continue;
 
-            const bearishCandle = Number(c.close) < Number(c.open);
-            const range = Number(c.high) - Number(c.low);
-            const notHugeCandle = range <= avgRange * 2.2;
+        const originIndex = findLastBearishCandle(candles, i - 1, Math.max(0, i - 8), avgRange);
 
-            if (bearishCandle && notHugeCandle) {
-                const ob = buildOrderBlock(c, "bullish", candles, j, avgVolume);
-                if (!ob.broken) return ob;
-            }
-        }
+        if (originIndex === -1) continue;
+
+        const block = buildBlock({
+            candles,
+            index: originIndex,
+            bosIndex: i,
+            type: "bullish",
+            avgRange,
+            avgVolume
+        });
+
+        if (block.valid) blocks.push(block);
     }
 
-    return null;
+    return blocks;
 }
 
-function findBearishOrderBlock(candles, avgRange, avgVolume) {
-    for (let i = candles.length - 2; i >= 10; i--) {
-        const current = candles[i];
-        const previousLow = lowest(candles.slice(Math.max(0, i - 10), i).map(c => Number(c.low)));
+function findBearishBlocks(candles, avgRange, avgVolume) {
+    const blocks = [];
 
-        const bosDown =
-            Number(current.close) < previousLow &&
-            Number(current.volume || 0) >= avgVolume;
+    for (let i = 8; i < candles.length; i++) {
+        const prior = candles.slice(Math.max(0, i - 8), i);
+        const priorLow = lowest(prior.map(c => c.low));
 
-        if (!bosDown) continue;
+        const bos =
+            candles[i].close < priorLow &&
+            candleBody(candles[i]) >= avgRange * 0.35;
 
-        for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
-            const c = candles[j];
+        if (!bos) continue;
 
-            const bullishCandle = Number(c.close) > Number(c.open);
-            const range = Number(c.high) - Number(c.low);
-            const notHugeCandle = range <= avgRange * 2.2;
+        const originIndex = findLastBullishCandle(candles, i - 1, Math.max(0, i - 8), avgRange);
 
-            if (bullishCandle && notHugeCandle) {
-                const ob = buildOrderBlock(c, "bearish", candles, j, avgVolume);
-                if (!ob.broken) return ob;
-            }
-        }
+        if (originIndex === -1) continue;
+
+        const block = buildBlock({
+            candles,
+            index: originIndex,
+            bosIndex: i,
+            type: "bearish",
+            avgRange,
+            avgVolume
+        });
+
+        if (block.valid) blocks.push(block);
     }
 
-    return null;
+    return blocks;
 }
 
-function buildOrderBlock(candle, type, candles, index, avgVolume) {
-    const top = Number(candle.high);
-    const bottom = Number(candle.low);
+function buildBlock({ candles, index, bosIndex, type, avgRange, avgVolume }) {
+    const origin = candles[index];
+
+    const top = origin.high;
+    const bottom = origin.low;
+    const mid = (top + bottom) / 2;
 
     let touches = 0;
     let broken = false;
+    let mitigated = false;
+    let retested = false;
 
-    for (let k = index + 1; k < candles.length; k++) {
-        const c = candles[k];
+    for (let i = bosIndex + 1; i < candles.length; i++) {
+        const c = candles[i];
 
-        const touched =
-            Number(c.low) <= top &&
-            Number(c.high) >= bottom;
+        const touched = c.low <= top && c.high >= bottom;
 
-        if (touched) touches++;
-
-        if (type === "bullish" && Number(c.close) < bottom) {
-            broken = true;
+        if (touched) {
+            touches++;
+            retested = true;
         }
 
-        if (type === "bearish" && Number(c.close) > top) {
-            broken = true;
+        if (type === "bullish") {
+            if (c.low <= mid) mitigated = true;
+            if (c.close < bottom) broken = true;
+        }
+
+        if (type === "bearish") {
+            if (c.high >= mid) mitigated = true;
+            if (c.close > top) broken = true;
         }
     }
 
     const fresh = touches <= 1;
-    const volumeStrong = Number(candle.volume || 0) >= avgVolume;
+    const originRange = origin.high - origin.low;
+    const notHugeOrigin = originRange <= avgRange * 2.2;
+    const volumeStrong = (origin.volume || 0) >= avgVolume;
+    const displacement = Math.abs(candles[bosIndex].close - candles[index].close);
+    const displacementStrong = displacement >= avgRange * 1.2;
 
     let strength = 50;
 
-    if (fresh) strength += 20;
-    if (!broken) strength += 20;
+    if (notHugeOrigin) strength += 10;
     if (volumeStrong) strength += 10;
-    if (touches === 0) strength += 10;
+    if (displacementStrong) strength += 15;
+    if (fresh) strength += 15;
+    if (retested) strength += 5;
+    if (mitigated) strength -= 10;
     if (touches > 2) strength -= 20;
+    if (broken) strength = 0;
 
-    strength = Math.max(0, Math.min(100, strength));
+    strength = clamp(strength, 0, 100);
 
     return {
         type,
         top,
         bottom,
-        createdAt: candle.time || candle.t || null,
+        mid,
+        createdAt: origin.time || null,
+        originIndex: index,
+        bosIndex,
         strength,
-        fresh,
+        confidence: strength,
         touches,
+        fresh,
+        retested,
+        mitigated,
         broken,
-        valid: !broken && strength >= 70
+        valid: !broken && strength >= 65,
+        reason: buildBlockReason(type, strength, fresh, retested, mitigated, broken)
     };
 }
 
-function buildReason(bullish, bearish) {
-    if (bullish && bearish) {
-        return "تم العثور على أوردر بلوك صاعد وهابط";
+function buildBlockReason(type, strength, fresh, retested, mitigated, broken) {
+    if (broken) return `${type} order block مكسور`;
+
+    const parts = [`${type} order block بقوة ${strength}`];
+
+    if (fresh) parts.push("Fresh");
+    if (retested) parts.push("Retested");
+    if (mitigated) parts.push("Mitigated");
+
+    return parts.join(" + ");
+}
+
+function findLastBearishCandle(candles, start, end, avgRange) {
+    for (let i = start; i >= end; i--) {
+        const c = candles[i];
+        const bearish = c.close < c.open;
+        const validRange = (c.high - c.low) <= avgRange * 2.2;
+
+        if (bearish && validRange) return i;
     }
 
-    if (bullish) {
-        return `تم العثور على أوردر بلوك صاعد بقوة ${bullish.strength}`;
+    return -1;
+}
+
+function findLastBullishCandle(candles, start, end, avgRange) {
+    for (let i = start; i >= end; i--) {
+        const c = candles[i];
+        const bullish = c.close > c.open;
+        const validRange = (c.high - c.low) <= avgRange * 2.2;
+
+        if (bullish && validRange) return i;
     }
 
-    if (bearish) {
-        return `تم العثور على أوردر بلوك هابط بقوة ${bearish.strength}`;
-    }
+    return -1;
+}
 
-    return "لا يوجد أوردر بلوك صالح حاليًا";
+function normalizeCandle(c) {
+    return {
+        open: Number(c.open ?? c.o ?? c.close ?? c.c),
+        high: Number(c.high ?? c.h),
+        low: Number(c.low ?? c.l),
+        close: Number(c.close ?? c.c),
+        volume: Number(c.volume ?? c.v ?? 0),
+        time: c.time ?? c.t ?? null
+    };
+}
+
+function candleBody(c) {
+    return Math.abs(c.close - c.open);
 }
 
 function average(values) {
     const clean = values.filter(v => Number.isFinite(v));
-    if (clean.length === 0) return 0;
-
+    if (!clean.length) return 0;
     return clean.reduce((sum, v) => sum + v, 0) / clean.length;
 }
 
@@ -172,4 +256,19 @@ function highest(values) {
 
 function lowest(values) {
     return Math.min(...values.filter(v => Number.isFinite(v)));
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function emptyResult(reason) {
+    return {
+        hasBullishOB: false,
+        hasBearishOB: false,
+        bullish: null,
+        bearish: null,
+        best: null,
+        reason
+    };
 }
