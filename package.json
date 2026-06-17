@@ -1,0 +1,16 @@
+{
+  "name": "ai-trading-pro",
+  "version": "1.0.0",
+  "description": "TradingView to AI Decision Engine to TradersPost",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "dotenv": "^16.4.7",
+    "openai": "^4.104.0"
+  }
+}
