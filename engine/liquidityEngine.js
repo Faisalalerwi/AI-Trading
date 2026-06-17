@@ -2,7 +2,7 @@
 // يكتشف السيولة: Equal Highs / Equal Lows / Sweep
 
 export function analyzeLiquidity(candles = []) {
-    if (!Array.isArray(candles) || candles.length < 30) {
+    if (!Array.isArray(candles) || candles.length < 20) {
         return {
             hasLiquidity: false,
             buySideLiquidity: false,
