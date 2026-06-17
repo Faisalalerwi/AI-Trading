@@ -32,14 +32,13 @@ export async function makeDecision(data) {
 
     let decision = "WAIT";
 
-    if (
-        finalScore >= 85 &&
-        data.buyTrigger === true &&
-        data.inTrade !== true &&
-        smartMoney.bias === "bullish"
-    ) {
-        decision = "BUY";
-    }
+  if (
+    finalScore >= 85 &&
+    data.buyTrigger === true &&
+    smartMoney.score >= 50
+) {
+    decision = "BUY";
+}
 
     if (data.inTrade === true && data.sellTrigger === true) {
         decision = "EXIT";
