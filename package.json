@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --experimental-vm-modules --test tests/*.test.js"
   },
   "dependencies": {
     "express": "^4.21.2",
